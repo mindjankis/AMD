@@ -37,149 +37,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['clear_urls'])) {
         file_put_contents($data_file, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        unset($_SESSION['play_queue'], $_SESSION['play_index']);
         $url_message = 'URL list cleared successfully.';
+    }
+
+    if (isset($_POST['shuffle_urls'])) {
+        $saved_urls = json_decode((string) file_get_contents($data_file), true);
+        if (!is_array($saved_urls)) {
+            $saved_urls = [];
+        }
+        
+        if (count($saved_urls) > 0) {
+            shuffle($saved_urls);
+            file_put_contents($data_file, json_encode($saved_urls, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $url_message = 'URLs shuffled successfully.';
+        } else {
+            $url_error = 'No URLs to shuffle.';
+        }
     }
 }
 
 $playlist_urls = json_decode((string) file_get_contents($data_file), true);
 if (!is_array($playlist_urls)) {
     $playlist_urls = [];
-}
-
-function build_shuffled_play_queue(array $playlist_urls): array {
-    $queue = array_values($playlist_urls);
-    shuffle($queue);
-    return $queue;
-}
-
-if (isset($_POST['play_urls'])) {
-    if ($playlist_urls) {
-        $_SESSION['play_queue'] = build_shuffled_play_queue($playlist_urls);
-        $_SESSION['play_index'] = 0;
-        header('Location: index.php?play=1');
-        exit;
-    }
-
-    $url_error = 'No URLs are available to play.';
-}
-
-if (isset($_GET['next']) && isset($_SESSION['play_queue'], $_SESSION['play_index'])) {
-    $_SESSION['play_index']++;
-}
-
-function extract_youtube_video_id($url) {
-    $parts = parse_url($url);
-    if (!$parts || empty($parts['host'])) {
-        return null;
-    }
-
-    $host = strtolower($parts['host']);
-
-    if (strpos($host, 'youtu.be') !== false) {
-        $video_id = trim($parts['path'] ?? '', '/');
-        return $video_id !== '' ? $video_id : null;
-    }
-
-    if (strpos($host, 'youtube.com') !== false) {
-        parse_str($parts['query'] ?? '', $query);
-        if (!empty($query['v'])) {
-            return $query['v'];
-        }
-
-        $path_parts = array_values(array_filter(explode('/', trim($parts['path'] ?? '', '/'))));
-        if (isset($path_parts[0], $path_parts[1]) && in_array($path_parts[0], ['embed', 'shorts'], true)) {
-            return $path_parts[1];
-        }
-    }
-
-    return null;
-}
-
-function fetch_remote_body($url) {
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0',
-            CURLOPT_TIMEOUT => 15,
-        ]);
-        $result = curl_exec($ch);
-        curl_close($ch);
-
-        if (is_string($result) && $result !== '') {
-            return $result;
-        }
-    }
-
-    $context = stream_context_create([
-        'http' => [
-            'timeout' => 15,
-            'header' => "User-Agent: Mozilla/5.0\r\n",
-        ],
-    ]);
-
-    $result = @file_get_contents($url, false, $context);
-    return is_string($result) ? $result : '';
-}
-
-function get_track_length_seconds($url) {
-    $video_id = extract_youtube_video_id($url);
-    if ($video_id === null) {
-        return null;
-    }
-
-    $html = fetch_remote_body('https://www.youtube.com/watch?v=' . rawurlencode($video_id));
-    if ($html !== '' && preg_match('/"lengthSeconds":"(\d+)"/', $html, $matches)) {
-        return max(1, (int) $matches[1]);
-    }
-
-    return null;
-}
-
-function get_playable_url($url) {
-    $parts = parse_url($url);
-    if (!$parts || empty($parts['host'])) {
-        return $url;
-    }
-
-    $host = strtolower($parts['host']);
-
-    if (strpos($host, 'youtube.com') !== false) {
-        parse_str($parts['query'] ?? '', $query);
-        if (!empty($query['v'])) {
-            return 'https://www.youtube.com/embed/' . rawurlencode($query['v']) . '?autoplay=1';
-        }
-    }
-
-    if (strpos($host, 'youtu.be') !== false) {
-        $video_id = trim($parts['path'] ?? '', '/');
-        if ($video_id !== '') {
-            return 'https://www.youtube.com/embed/' . rawurlencode($video_id) . '?autoplay=1';
-        }
-    }
-
-    return $url;
-}
-
-$play_queue = $_SESSION['play_queue'] ?? [];
-$current_play_index = $_SESSION['play_index'] ?? 0;
-$current_play_url = $play_queue[$current_play_index] ?? null;
-$is_playing = is_string($current_play_url) && $current_play_url !== '';
-$play_delay_seconds = $is_playing ? get_track_length_seconds($current_play_url) : null;
-$current_embedded_url = $current_play_url ? get_playable_url($current_play_url) : null;
-
-if (!empty($play_queue) && $current_play_index >= count($play_queue)) {
-    unset($_SESSION['play_queue'], $_SESSION['play_index']);
-    $is_playing = false;
-    $current_play_url = null;
-    $current_embedded_url = null;
-    $url_message = 'Playback finished. All URLs were played once in random order.';
-}
-
-if ($is_playing && $current_play_url && $play_delay_seconds !== null) {
-    header('Refresh: ' . (int) $play_delay_seconds . '; url=index.php?play=1&next=1');
 }
 
 $help_content = file_exists(__DIR__ . '/README.md')
@@ -311,8 +190,8 @@ $help_content = file_exists(__DIR__ . '/README.md')
             color:#fff;
             font-weight:bold;
         }
-        #playButton{background:#16a34a;}
         #clearButton{background:#b91c1c;}
+        #shuffleButton{background:#f59e0b;}
         .play-status{margin-top:10px;color:#cfe8ff;}
         .player-box{
             margin-top:18px;
@@ -389,50 +268,24 @@ $help_content = file_exists(__DIR__ . '/README.md')
         <div class="playlist">
             <h2>Saved URLs</h2>
             <?php if ($playlist_urls): ?>
-                <?php if (!$is_playing): ?>
-                    <ul id="playlistList">
-                        <?php foreach ($playlist_urls as $index => $saved_url): ?>
-                            <li>
-                                <a href="<?= htmlspecialchars($saved_url) ?>" target="_blank" rel="noopener noreferrer">
-                                    <?= $index + 1 ?>
-                                </a>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                <?php endif; ?>
+                <ul id="playlistList">
+                    <?php foreach ($playlist_urls as $index => $saved_url): ?>
+                        <li>
+                            <a href="<?= htmlspecialchars($saved_url) ?>" target="_blank" rel="noopener noreferrer">
+                                <?= $index + 1 ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
 
                 <div class="play-actions">
                     <form method="post" style="display:inline;">
-                        <button type="submit" id="playButton" name="play_urls">PLAY</button>
+                        <button type="submit" id="shuffleButton" name="shuffle_urls">Shuffle</button>
                     </form>
                     <form method="post" style="display:inline;">
                         <button type="submit" id="clearButton" name="clear_urls">Clear URLs List</button>
                     </form>
                 </div>
-
-                <?php if ($is_playing && $current_play_url): ?>
-                    <div class="player-box">
-                        <h3>Now Playing</h3>
-                        <p class="play-status">
-                            Playing item <?= $current_play_index + 1 ?> of <?= count($play_queue) ?> in random order...
-                        </p>
-                        <p class="play-status">
-                            Detected track length: <?= $play_delay_seconds !== null ? gmdate('i:s', (int) $play_delay_seconds) : 'Unavailable' ?>
-                        </p>
-                        <iframe
-                            class="player-frame"
-                            src="<?= htmlspecialchars($current_embedded_url) ?>"
-                            allow="autoplay; encrypted-media"
-                            allowfullscreen
-                            loading="lazy"
-                        ></iframe>
-                        <p>
-                            <a href="<?= htmlspecialchars($current_play_url) ?>" target="_blank" rel="noopener noreferrer">
-                                Open current URL directly
-                            </a>
-                        </p>
-                    </div>
-                <?php endif; ?>
             <?php else: ?>
                 <p>No URLs added yet.</p>
             <?php endif; ?>
