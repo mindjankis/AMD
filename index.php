@@ -37,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['clear_urls'])) {
         file_put_contents($data_file, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        unset($_SESSION['play_queue'], $_SESSION['play_index']);
         $url_message = 'URL list cleared successfully.';
     }
 }
@@ -45,7 +46,68 @@ $playlist_urls = json_decode((string) file_get_contents($data_file), true);
 if (!is_array($playlist_urls)) {
     $playlist_urls = [];
 }
-$playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+if (isset($_POST['play_urls'])) {
+    if ($playlist_urls) {
+        $play_queue = array_values($playlist_urls);
+        shuffle($play_queue);
+        $_SESSION['play_queue'] = $play_queue;
+        $_SESSION['play_index'] = 0;
+        header('Location: index.php?play=1');
+        exit;
+    }
+
+    $url_error = 'No URLs are available to play.';
+}
+
+if (isset($_GET['next']) && isset($_SESSION['play_queue'], $_SESSION['play_index'])) {
+    $_SESSION['play_index']++;
+}
+
+function get_playable_url($url) {
+    $parts = parse_url($url);
+    if (!$parts || empty($parts['host'])) {
+        return $url;
+    }
+
+    $host = strtolower($parts['host']);
+
+    if (strpos($host, 'youtube.com') !== false) {
+        parse_str($parts['query'] ?? '', $query);
+        if (!empty($query['v'])) {
+            return 'https://www.youtube.com/embed/' . rawurlencode($query['v']) . '?autoplay=1';
+        }
+    }
+
+    if (strpos($host, 'youtu.be') !== false) {
+        $video_id = trim($parts['path'] ?? '', '/');
+        if ($video_id !== '') {
+            return 'https://www.youtube.com/embed/' . rawurlencode($video_id) . '?autoplay=1';
+        }
+    }
+
+    return $url;
+}
+
+$play_queue = $_SESSION['play_queue'] ?? [];
+$current_play_index = $_SESSION['play_index'] ?? 0;
+$play_delay_seconds = 180;
+$is_playing = !empty($play_queue) && array_key_exists($current_play_index, $play_queue);
+$current_play_url = $is_playing ? $play_queue[$current_play_index] : null;
+$current_embedded_url = $current_play_url ? get_playable_url($current_play_url) : null;
+
+if (!empty($play_queue) && $current_play_index >= count($play_queue)) {
+    unset($_SESSION['play_queue'], $_SESSION['play_index']);
+    $is_playing = false;
+    $current_play_url = null;
+    $current_embedded_url = null;
+    $url_message = 'Playback finished. All URLs were played once in random order.';
+}
+
+if ($is_playing && $current_play_url) {
+    header('Refresh: ' . $play_delay_seconds . '; url=index.php?play=1&next=1');
+}
+
 $help_content = file_exists(__DIR__ . '/README.md')
     ? file_get_contents(__DIR__ . '/README.md')
     : 'README.md file not found.';
@@ -178,6 +240,20 @@ $help_content = file_exists(__DIR__ . '/README.md')
         #playButton{background:#16a34a;}
         #clearButton{background:#b91c1c;}
         .play-status{margin-top:10px;color:#cfe8ff;}
+        .player-box{
+            margin-top:18px;
+            padding:14px;
+            border-radius:10px;
+            background: rgba(255,255,255,0.08);
+        }
+        .player-frame{
+            width:100%;
+            height:315px;
+            border:0;
+            border-radius:10px;
+            margin-top:10px;
+            background:#000;
+        }
         .hidden{display:none;}
         .corner-picture{
             position: fixed;
@@ -239,22 +315,47 @@ $help_content = file_exists(__DIR__ . '/README.md')
         <div class="playlist">
             <h2>Saved URLs</h2>
             <?php if ($playlist_urls): ?>
-                <ul id="playlistList">
-                    <?php foreach ($playlist_urls as $index => $saved_url): ?>
-                        <li>
-                            <a href="<?= htmlspecialchars($saved_url) ?>" target="_blank" rel="noopener noreferrer">
-                                <?= $index + 1 ?>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+                <?php if (!$is_playing): ?>
+                    <ul id="playlistList">
+                        <?php foreach ($playlist_urls as $index => $saved_url): ?>
+                            <li>
+                                <a href="<?= htmlspecialchars($saved_url) ?>" target="_blank" rel="noopener noreferrer">
+                                    <?= $index + 1 ?>
+                                </a>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+
                 <div class="play-actions">
-                    <button type="button" id="playButton">PLAY</button>
+                    <form method="post" style="display:inline;">
+                        <button type="submit" id="playButton" name="play_urls">PLAY</button>
+                    </form>
                     <form method="post" style="display:inline;">
                         <button type="submit" id="clearButton" name="clear_urls">Clear URLs List</button>
                     </form>
-                    <p id="playStatus" class="play-status"></p>
                 </div>
+
+                <?php if ($is_playing && $current_play_url): ?>
+                    <div class="player-box">
+                        <h3>Now Playing</h3>
+                        <p class="play-status">
+                            Playing item <?= $current_play_index + 1 ?> of <?= count($play_queue) ?> in random order...
+                        </p>
+                        <iframe
+                            class="player-frame"
+                            src="<?= htmlspecialchars($current_embedded_url) ?>"
+                            allow="autoplay; encrypted-media"
+                            allowfullscreen
+                            loading="lazy"
+                        ></iframe>
+                        <p>
+                            <a href="<?= htmlspecialchars($current_play_url) ?>" target="_blank" rel="noopener noreferrer">
+                                Open current URL directly
+                            </a>
+                        </p>
+                    </div>
+                <?php endif; ?>
             <?php else: ?>
                 <p>No URLs added yet.</p>
             <?php endif; ?>
@@ -264,20 +365,7 @@ $help_content = file_exists(__DIR__ . '/README.md')
     <img src="Picture_1.jpg" alt="Corner picture" class="corner-picture">
 
     <script>
-        const playlistUrls = <?= $playlist_urls_json ?: '[]' ?>;
-        const playButton = document.getElementById('playButton');
-        const playlistList = document.getElementById('playlistList');
-        const playStatus = document.getElementById('playStatus');
         const dropdownMenus = document.querySelectorAll('.menu');
-        let playerWindow = null;
-
-        function shufflePlaylist(items) {
-            for (let i = items.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [items[i], items[j]] = [items[j], items[i]];
-            }
-            return items;
-        }
 
         document.addEventListener('click', (event) => {
             dropdownMenus.forEach((menu) => {
@@ -286,53 +374,6 @@ $help_content = file_exists(__DIR__ . '/README.md')
                 }
             });
         });
-
-        if (playButton) {
-            playButton.addEventListener('click', () => {
-                if (!playlistUrls.length) {
-                    if (playStatus) {
-                        playStatus.textContent = 'No URLs are available to play.';
-                    }
-                    return;
-                }
-
-                if (playlistList) {
-                    playlistList.classList.add('hidden');
-                }
-
-                const shuffledUrls = shufflePlaylist([...playlistUrls]);
-                let currentIndex = 0;
-                const delayMs = 8000;
-
-                const playNext = () => {
-                    if (currentIndex >= shuffledUrls.length) {
-                        if (playerWindow && !playerWindow.closed) {
-                            playerWindow.close();
-                        }
-                        playStatus.textContent = `Playback finished. ${shuffledUrls.length} URL(s) were opened once in random order.`;
-                        return;
-                    }
-
-                    const nextUrl = shuffledUrls[currentIndex];
-                    playStatus.textContent = `Playing item ${currentIndex + 1} of ${shuffledUrls.length} in random order...`;
-
-                    if (playerWindow && !playerWindow.closed) {
-                        playerWindow.close();
-                    }
-
-                    playerWindow = window.open(nextUrl, `playlistPlayer_${Date.now()}_${currentIndex}`);
-                    if (!playerWindow) {
-                        playStatus.textContent = 'Playback stopped because the player window was blocked.';
-                        return;
-                    }
-
-                    currentIndex++;
-                    setTimeout(playNext, delayMs);
-                };
-
-                playNext();
-            });
-        }
     </script>
 </body>
 </html>
