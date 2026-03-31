@@ -50,7 +50,7 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard - Simple Login</title>
+    <title>Guess my song</title>
     <style>
         body{
             font-family: Arial, sans-serif;

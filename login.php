@@ -41,7 +41,7 @@ unset($_SESSION['flash']);
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Login - Simple Login</title>
+    <title>Login Guess my song</title>
     <style>
         body{
             font-family: Arial, sans-serif;
