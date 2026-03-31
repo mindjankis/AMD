@@ -47,17 +47,15 @@ if (!is_array($playlist_urls)) {
     $playlist_urls = [];
 }
 
+function build_shuffled_play_queue(array $playlist_urls): array {
+    $queue = array_values($playlist_urls);
+    shuffle($queue);
+    return $queue;
+}
+
 if (isset($_POST['play_urls'])) {
     if ($playlist_urls) {
-        $play_queue = [];
-        foreach ($playlist_urls as $playlist_url) {
-            $play_queue[] = [
-                'url' => $playlist_url,
-                'duration' => get_track_length_seconds($playlist_url),
-            ];
-        }
-        shuffle($play_queue);
-        $_SESSION['play_queue'] = $play_queue;
+        $_SESSION['play_queue'] = build_shuffled_play_queue($playlist_urls);
         $_SESSION['play_index'] = 0;
         header('Location: index.php?play=1');
         exit;
@@ -129,7 +127,7 @@ function fetch_remote_body($url) {
 function get_track_length_seconds($url) {
     $video_id = extract_youtube_video_id($url);
     if ($video_id === null) {
-        return 180;
+        return null;
     }
 
     $html = fetch_remote_body('https://www.youtube.com/watch?v=' . rawurlencode($video_id));
@@ -137,7 +135,7 @@ function get_track_length_seconds($url) {
         return max(1, (int) $matches[1]);
     }
 
-    return 180;
+    return null;
 }
 
 function get_playable_url($url) {
@@ -167,10 +165,9 @@ function get_playable_url($url) {
 
 $play_queue = $_SESSION['play_queue'] ?? [];
 $current_play_index = $_SESSION['play_index'] ?? 0;
-$current_play_item = $play_queue[$current_play_index] ?? null;
-$play_delay_seconds = is_array($current_play_item) ? max(1, (int) ($current_play_item['duration'] ?? 180)) : 0;
-$is_playing = is_array($current_play_item) && !empty($current_play_item['url']);
-$current_play_url = $current_play_item['url'] ?? null;
+$current_play_url = $play_queue[$current_play_index] ?? null;
+$is_playing = is_string($current_play_url) && $current_play_url !== '';
+$play_delay_seconds = $is_playing ? get_track_length_seconds($current_play_url) : null;
 $current_embedded_url = $current_play_url ? get_playable_url($current_play_url) : null;
 
 if (!empty($play_queue) && $current_play_index >= count($play_queue)) {
@@ -181,8 +178,8 @@ if (!empty($play_queue) && $current_play_index >= count($play_queue)) {
     $url_message = 'Playback finished. All URLs were played once in random order.';
 }
 
-if ($is_playing && $current_play_url) {
-    header('Refresh: ' . $play_delay_seconds . '; url=index.php?play=1&next=1');
+if ($is_playing && $current_play_url && $play_delay_seconds !== null) {
+    header('Refresh: ' . (int) $play_delay_seconds . '; url=index.php?play=1&next=1');
 }
 
 $help_content = file_exists(__DIR__ . '/README.md')
@@ -420,7 +417,7 @@ $help_content = file_exists(__DIR__ . '/README.md')
                             Playing item <?= $current_play_index + 1 ?> of <?= count($play_queue) ?> in random order...
                         </p>
                         <p class="play-status">
-                            Detected track length: <?= gmdate('i:s', $play_delay_seconds) ?>
+                            Detected track length: <?= $play_delay_seconds !== null ? gmdate('i:s', (int) $play_delay_seconds) : 'Unavailable' ?>
                         </p>
                         <iframe
                             class="player-frame"
