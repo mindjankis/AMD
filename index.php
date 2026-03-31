@@ -161,7 +161,7 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
             position: fixed;
             right: 20px;
             bottom: 20px;
-            width: min(360px, 42vw);
+            width: min(270px, 42vw);
             border-radius: 12px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
             pointer-events: none;
@@ -172,7 +172,7 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
 <body>
     <div class="card">
         <div class="topbar">
-            <h1>Welcome</h1>
+            <h1>Guess my song</h1>
             <details class="menu">
                 <summary>Settings ▾</summary>
                 <div class="menu-items">
