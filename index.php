@@ -46,6 +46,9 @@ if (!is_array($playlist_urls)) {
     $playlist_urls = [];
 }
 $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+$help_content = file_exists(__DIR__ . '/README.md')
+    ? file_get_contents(__DIR__ . '/README.md')
+    : 'README.md file not found.';
 ?><!doctype html>
 <html lang="en">
 <head>
@@ -79,6 +82,12 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
             gap:16px;
             margin-bottom:16px;
         }
+        .topbar-actions{
+            display:flex;
+            gap:10px;
+            align-items:flex-start;
+            flex-wrap:wrap;
+        }
         .menu{position:relative;}
         .menu summary{
             list-style:none;
@@ -109,6 +118,19 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
         .menu-items a:hover{
             background: rgba(255,255,255,0.1);
             text-decoration:none;
+        }
+        .help-panel{
+            padding:12px 14px;
+            min-width:320px;
+            max-width:420px;
+            max-height:280px;
+            overflow-y:auto;
+        }
+        .help-content{
+            white-space:pre-wrap;
+            line-height:1.5;
+            color:#f5f5f5;
+            font-size:14px;
         }
         .danger{color:#ffb3b3 !important;}
         .success{color:#b9ffb9;}
@@ -173,13 +195,21 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
     <div class="card">
         <div class="topbar">
             <h1>Guess my song</h1>
-            <details class="menu">
-                <summary>Settings ▾</summary>
-                <div class="menu-items">
-                    <a class="danger" href="delete_account.php">Delete Account</a>
-                    <a href="logout.php">Logout</a>
-                </div>
-            </details>
+            <div class="topbar-actions">
+                <details class="menu">
+                    <summary>Help ▾</summary>
+                    <div class="menu-items help-panel">
+                        <div class="help-content"><?= htmlspecialchars($help_content) ?></div>
+                    </div>
+                </details>
+                <details class="menu">
+                    <summary>Settings ▾</summary>
+                    <div class="menu-items">
+                        <a class="danger" href="delete_account.php">Delete Account</a>
+                        <a href="logout.php">Logout</a>
+                    </div>
+                </details>
+            </div>
         </div>
         <p>You are logged in as <strong><?= htmlspecialchars($user_email) ?></strong>.</p>
 
@@ -238,6 +268,7 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
         const playButton = document.getElementById('playButton');
         const playlistList = document.getElementById('playlistList');
         const playStatus = document.getElementById('playStatus');
+        const dropdownMenus = document.querySelectorAll('.menu');
 
         function shufflePlaylist(items) {
             for (let i = items.length - 1; i > 0; i--) {
@@ -246,6 +277,14 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
             }
             return items;
         }
+
+        document.addEventListener('click', (event) => {
+            dropdownMenus.forEach((menu) => {
+                if (menu.open && !menu.contains(event.target)) {
+                    menu.open = false;
+                }
+            });
+        });
 
         if (playButton) {
             playButton.addEventListener('click', () => {
