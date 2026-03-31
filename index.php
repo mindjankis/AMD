@@ -269,6 +269,7 @@ $help_content = file_exists(__DIR__ . '/README.md')
         const playlistList = document.getElementById('playlistList');
         const playStatus = document.getElementById('playStatus');
         const dropdownMenus = document.querySelectorAll('.menu');
+        let playerWindow = null;
 
         function shufflePlaylist(items) {
             for (let i = items.length - 1; i > 0; i--) {
@@ -302,15 +303,12 @@ $help_content = file_exists(__DIR__ . '/README.md')
                 const shuffledUrls = shufflePlaylist([...playlistUrls]);
                 let currentIndex = 0;
                 const delayMs = 8000;
-                let playerWindow = window.open('about:blank', 'playlistPlayer');
-
-                if (!playerWindow) {
-                    playStatus.textContent = 'Please allow pop-ups so the URLs can open in your browser or media app.';
-                    return;
-                }
 
                 const playNext = () => {
                     if (currentIndex >= shuffledUrls.length) {
+                        if (playerWindow && !playerWindow.closed) {
+                            playerWindow.close();
+                        }
                         playStatus.textContent = `Playback finished. ${shuffledUrls.length} URL(s) were opened once in random order.`;
                         return;
                     }
@@ -318,15 +316,16 @@ $help_content = file_exists(__DIR__ . '/README.md')
                     const nextUrl = shuffledUrls[currentIndex];
                     playStatus.textContent = `Playing item ${currentIndex + 1} of ${shuffledUrls.length} in random order...`;
 
-                    if (playerWindow.closed) {
-                        playerWindow = window.open('about:blank', 'playlistPlayer');
-                        if (!playerWindow) {
-                            playStatus.textContent = 'Playback stopped because the player window was blocked.';
-                            return;
-                        }
+                    if (playerWindow && !playerWindow.closed) {
+                        playerWindow.close();
                     }
 
-                    playerWindow.location.href = nextUrl;
+                    playerWindow = window.open(nextUrl, `playlistPlayer_${Date.now()}_${currentIndex}`);
+                    if (!playerWindow) {
+                        playStatus.textContent = 'Playback stopped because the player window was blocked.';
+                        return;
+                    }
+
                     currentIndex++;
                     setTimeout(playNext, delayMs);
                 };
