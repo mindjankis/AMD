@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-family: Arial, sans-serif;
             max-width: 450px;
             margin: 30px auto;
-            background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1400&q=80');
+            background-image: url('Wallpaper.jpg');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -66,6 +66,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             backdrop-filter: blur(4px);
         }
         a{color:#cfe8ff;}
+        .corner-picture{
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: min(360px, 42vw);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -90,5 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <p>Already have account? <a href="login.php">Login</a></p>
     </div>
+
+    <img src="Picture_1.jpg" alt="Corner picture" class="corner-picture">
 </body>
 </html>

@@ -56,7 +56,7 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
             font-family: Arial, sans-serif;
             max-width: 600px;
             margin: 40px auto;
-            background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1400&q=80');
+            background-image: url('Wallpaper.jpg');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -157,6 +157,16 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
         #clearButton{background:#b91c1c;}
         .play-status{margin-top:10px;color:#cfe8ff;}
         .hidden{display:none;}
+        .corner-picture{
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: min(360px, 42vw);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -220,6 +230,8 @@ $playlist_urls_json = json_encode(array_values($playlist_urls), JSON_UNESCAPED_S
             <?php endif; ?>
         </div>
     </div>
+
+    <img src="Picture_1.jpg" alt="Corner picture" class="corner-picture">
 
     <script>
         const playlistUrls = <?= $playlist_urls_json ?: '[]' ?>;

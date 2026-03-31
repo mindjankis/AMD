@@ -47,7 +47,7 @@ unset($_SESSION['flash']);
             font-family: Arial, sans-serif;
             max-width: 450px;
             margin: 30px auto;
-            background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1400&q=80');
+            background-image: url('Wallpaper.jpg');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -66,6 +66,16 @@ unset($_SESSION['flash']);
             backdrop-filter: blur(4px);
         }
         a{color:#cfe8ff;}
+        .corner-picture{
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: min(360px, 42vw);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+            pointer-events: none;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -87,5 +97,7 @@ unset($_SESSION['flash']);
 
         <p>Don't have account? <a href="register.php">Register</a></p>
     </div>
+
+    <img src="Picture_1.jpg" alt="Corner picture" class="corner-picture">
 </body>
 </html>
