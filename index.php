@@ -49,7 +49,13 @@ if (!is_array($playlist_urls)) {
 
 if (isset($_POST['play_urls'])) {
     if ($playlist_urls) {
-        $play_queue = array_values($playlist_urls);
+        $play_queue = [];
+        foreach ($playlist_urls as $playlist_url) {
+            $play_queue[] = [
+                'url' => $playlist_url,
+                'duration' => get_track_length_seconds($playlist_url),
+            ];
+        }
         shuffle($play_queue);
         $_SESSION['play_queue'] = $play_queue;
         $_SESSION['play_index'] = 0;
@@ -62,6 +68,76 @@ if (isset($_POST['play_urls'])) {
 
 if (isset($_GET['next']) && isset($_SESSION['play_queue'], $_SESSION['play_index'])) {
     $_SESSION['play_index']++;
+}
+
+function extract_youtube_video_id($url) {
+    $parts = parse_url($url);
+    if (!$parts || empty($parts['host'])) {
+        return null;
+    }
+
+    $host = strtolower($parts['host']);
+
+    if (strpos($host, 'youtu.be') !== false) {
+        $video_id = trim($parts['path'] ?? '', '/');
+        return $video_id !== '' ? $video_id : null;
+    }
+
+    if (strpos($host, 'youtube.com') !== false) {
+        parse_str($parts['query'] ?? '', $query);
+        if (!empty($query['v'])) {
+            return $query['v'];
+        }
+
+        $path_parts = array_values(array_filter(explode('/', trim($parts['path'] ?? '', '/'))));
+        if (isset($path_parts[0], $path_parts[1]) && in_array($path_parts[0], ['embed', 'shorts'], true)) {
+            return $path_parts[1];
+        }
+    }
+
+    return null;
+}
+
+function fetch_remote_body($url) {
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT => 'Mozilla/5.0',
+            CURLOPT_TIMEOUT => 15,
+        ]);
+        $result = curl_exec($ch);
+        curl_close($ch);
+
+        if (is_string($result) && $result !== '') {
+            return $result;
+        }
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 15,
+            'header' => "User-Agent: Mozilla/5.0\r\n",
+        ],
+    ]);
+
+    $result = @file_get_contents($url, false, $context);
+    return is_string($result) ? $result : '';
+}
+
+function get_track_length_seconds($url) {
+    $video_id = extract_youtube_video_id($url);
+    if ($video_id === null) {
+        return 180;
+    }
+
+    $html = fetch_remote_body('https://www.youtube.com/watch?v=' . rawurlencode($video_id));
+    if ($html !== '' && preg_match('/"lengthSeconds":"(\d+)"/', $html, $matches)) {
+        return max(1, (int) $matches[1]);
+    }
+
+    return 180;
 }
 
 function get_playable_url($url) {
@@ -91,9 +167,10 @@ function get_playable_url($url) {
 
 $play_queue = $_SESSION['play_queue'] ?? [];
 $current_play_index = $_SESSION['play_index'] ?? 0;
-$play_delay_seconds = 180;
-$is_playing = !empty($play_queue) && array_key_exists($current_play_index, $play_queue);
-$current_play_url = $is_playing ? $play_queue[$current_play_index] : null;
+$current_play_item = $play_queue[$current_play_index] ?? null;
+$play_delay_seconds = is_array($current_play_item) ? max(1, (int) ($current_play_item['duration'] ?? 180)) : 0;
+$is_playing = is_array($current_play_item) && !empty($current_play_item['url']);
+$current_play_url = $current_play_item['url'] ?? null;
 $current_embedded_url = $current_play_url ? get_playable_url($current_play_url) : null;
 
 if (!empty($play_queue) && $current_play_index >= count($play_queue)) {
@@ -341,6 +418,9 @@ $help_content = file_exists(__DIR__ . '/README.md')
                         <h3>Now Playing</h3>
                         <p class="play-status">
                             Playing item <?= $current_play_index + 1 ?> of <?= count($play_queue) ?> in random order...
+                        </p>
+                        <p class="play-status">
+                            Detected track length: <?= gmdate('i:s', $play_delay_seconds) ?>
                         </p>
                         <iframe
                             class="player-frame"
