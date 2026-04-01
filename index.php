@@ -11,6 +11,8 @@ $data_file = __DIR__ . '/play_list_data.json';
 $url_message = '';
 $url_error = '';
 $entered_url = '';
+$current_play_index = $_SESSION['current_play_index'] ?? -1;
+$is_finished_playing = false;
 
 if (!file_exists($data_file)) {
     file_put_contents($data_file, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -37,6 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['clear_urls'])) {
         file_put_contents($data_file, json_encode([], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        unset($_SESSION['current_play_index']);
+        $current_play_index = -1;
+        $is_finished_playing = false;
         $url_message = 'URL list cleared successfully.';
     }
 
@@ -45,20 +50,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!is_array($saved_urls)) {
             $saved_urls = [];
         }
-        
+
         if (count($saved_urls) > 0) {
             shuffle($saved_urls);
             file_put_contents($data_file, json_encode($saved_urls, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            unset($_SESSION['current_play_index']);
+            $current_play_index = -1;
+            $is_finished_playing = false;
             $url_message = 'URLs shuffled successfully.';
         } else {
             $url_error = 'No URLs to shuffle.';
         }
     }
+
+    if (isset($_POST['advance_play'])) {
+        $saved_urls = json_decode((string) file_get_contents($data_file), true);
+        if (!is_array($saved_urls)) {
+            $saved_urls = [];
+        }
+
+        if (count($saved_urls) > 0) {
+            $next_index = $current_play_index + 1;
+
+            if ($next_index < count($saved_urls)) {
+                $current_play_index = $next_index;
+                $_SESSION['current_play_index'] = $current_play_index;
+
+                if ($current_play_index === count($saved_urls) - 1) {
+                    $url_message = 'Last URL opened. Playback will stop after this track.';
+                } else {
+                    $url_message = 'Track ' . ($current_play_index + 1) . ' opened successfully.';
+                }
+            } else {
+                $is_finished_playing = true;
+                $_SESSION['current_play_index'] = max(count($saved_urls) - 1, -1);
+                $url_message = 'All URLs have already been played.';
+            }
+        } else {
+            $url_error = 'No URLs available to play.';
+        }
+    }
+}
+
+if (isset($_GET['reset_play'])) {
+    unset($_SESSION['current_play_index']);
+    header('Location: index.php');
+    exit;
 }
 
 $playlist_urls = json_decode((string) file_get_contents($data_file), true);
 if (!is_array($playlist_urls)) {
     $playlist_urls = [];
+}
+
+$playlist_count = count($playlist_urls);
+$next_play_index = $current_play_index + 1;
+$next_play_url = ($next_play_index >= 0 && $next_play_index < $playlist_count)
+    ? $playlist_urls[$next_play_index]
+    : null;
+
+if ($playlist_count > 0 && $next_play_url === null && $current_play_index >= 0) {
+    $is_finished_playing = true;
 }
 
 $help_content = file_exists(__DIR__ . '/README.md')
@@ -190,8 +242,9 @@ $help_content = file_exists(__DIR__ . '/README.md')
             color:#fff;
             font-weight:bold;
         }
-        #clearButton{background:#b91c1c;}
+        #playButton{background:#16a34a;}
         #shuffleButton{background:#f59e0b;}
+        #clearButton{background:#b91c1c;}
         .play-status{margin-top:10px;color:#cfe8ff;}
         .player-box{
             margin-top:18px;
@@ -274,11 +327,46 @@ $help_content = file_exists(__DIR__ . '/README.md')
                             <a href="<?= htmlspecialchars($saved_url) ?>" target="_blank" rel="noopener noreferrer">
                                 <?= $index + 1 ?>
                             </a>
+                            <?php if ($index === $current_play_index): ?>
+                                <span style="color: #16a34a; font-weight: bold;">(Currently Playing)</span>
+                            <?php endif; ?>
                         </li>
                     <?php endforeach; ?>
                 </ul>
 
+                <?php if ($current_play_index >= 0 && $current_play_index < $playlist_count): ?>
+                    <p style="margin-top: 12px; color: #cfe8ff;">
+                        <strong>Last Opened:</strong> Track <?= $current_play_index + 1 ?> of <?= $playlist_count ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if ($next_play_url && !$is_finished_playing): ?>
+                    <p style="margin-top: 12px; color: #cfe8ff;">
+                        <strong>Next Track:</strong> Track <?= $next_play_index + 1 ?> of <?= $playlist_count ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if ($is_finished_playing): ?>
+                    <p style="margin-top: 12px; color: #b9ffb9; font-weight: bold;">
+                        ✓ All URLs have been played!
+                    </p>
+                    <a href="index.php?reset_play=1" style="display: inline-block; margin-top: 10px; padding: 8px 14px; background: #2d7dff; color: #fff; border-radius: 6px; text-decoration: none; font-weight: bold;">
+                        Reset & Play Again
+                    </a>
+                <?php endif; ?>
+
                 <div class="play-actions">
+                    <form method="post" id="advancePlayForm" style="display:inline;">
+                        <input type="hidden" name="advance_play" value="1">
+                        <button
+                            type="button"
+                            id="playButton"
+                            data-next-url="<?= htmlspecialchars((string) ($next_play_url ?? ''), ENT_QUOTES) ?>"
+                            <?= $next_play_url && !$is_finished_playing ? '' : 'disabled style="opacity: 0.5; cursor: not-allowed;"' ?>
+                        >
+                            <?= $current_play_index < 0 ? 'Play' : 'Play Next' ?>
+                        </button>
+                    </form>
                     <form method="post" style="display:inline;">
                         <button type="submit" id="shuffleButton" name="shuffle_urls">Shuffle</button>
                     </form>
@@ -296,6 +384,8 @@ $help_content = file_exists(__DIR__ . '/README.md')
 
     <script>
         const dropdownMenus = document.querySelectorAll('.menu');
+        const playButton = document.getElementById('playButton');
+        const advancePlayForm = document.getElementById('advancePlayForm');
 
         document.addEventListener('click', (event) => {
             dropdownMenus.forEach((menu) => {
@@ -304,6 +394,29 @@ $help_content = file_exists(__DIR__ . '/README.md')
                 }
             });
         });
+
+        if (playButton && advancePlayForm) {
+            playButton.addEventListener('click', () => {
+                const nextUrl = playButton.dataset.nextUrl || '';
+
+                if (!nextUrl) {
+                    return;
+                }
+
+                const popup = window.open(
+                    nextUrl,
+                    'music_player_' + Date.now(),
+                    'width=1000,height=700,menubar=yes,toolbar=yes,scrollbars=yes'
+                );
+
+                if (!popup) {
+                    window.alert('Please allow pop-ups for this site, then click Play again.');
+                    return;
+                }
+
+                advancePlayForm.submit();
+            });
+        }
     </script>
 </body>
 </html>
