@@ -109,6 +109,40 @@ $next_play_url = ($next_play_index >= 0 && $next_play_index < $playlist_count)
     ? $playlist_urls[$next_play_index]
     : null;
 
+$current_play_url = ($current_play_index >= 0 && $current_play_index < $playlist_count)
+    ? $playlist_urls[$current_play_index]
+    : null;
+
+function extract_youtube_video_id($url) {
+    $parts = parse_url((string) $url);
+    if (!$parts || empty($parts['host'])) {
+        return null;
+    }
+
+    $host = strtolower((string) $parts['host']);
+
+    if (strpos($host, 'youtu.be') !== false) {
+        $video_id = trim((string) ($parts['path'] ?? ''), '/');
+        return $video_id !== '' ? $video_id : null;
+    }
+
+    if (strpos($host, 'youtube.com') !== false) {
+        parse_str((string) ($parts['query'] ?? ''), $query);
+        if (!empty($query['v'])) {
+            return (string) $query['v'];
+        }
+
+        $path_parts = array_values(array_filter(explode('/', trim((string) ($parts['path'] ?? ''), '/'))));
+        if (isset($path_parts[0], $path_parts[1]) && in_array($path_parts[0], ['embed', 'shorts'], true)) {
+            return (string) $path_parts[1];
+        }
+    }
+
+    return null;
+}
+
+$current_play_video_id = $current_play_url ? extract_youtube_video_id($current_play_url) : null;
+
 if ($playlist_count > 0 && $next_play_url === null && $current_play_index >= 0) {
     $is_finished_playing = true;
 }
@@ -336,7 +370,19 @@ $help_content = file_exists(__DIR__ . '/README.md')
 
                 <?php if ($current_play_index >= 0 && $current_play_index < $playlist_count): ?>
                     <p style="margin-top: 12px; color: #cfe8ff;">
-                        <strong>Last Opened:</strong> Track <?= $current_play_index + 1 ?> of <?= $playlist_count ?>
+                        <strong>Current Track:</strong> Track <?= $current_play_index + 1 ?> of <?= $playlist_count ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if ($current_play_video_id): ?>
+                    <div class="player-box">
+                        <h3>Embedded Player</h3>
+                        <p id="playerStatusText" class="play-status">Loading player...</p>
+                        <div id="ytPlayer" class="player-frame"></div>
+                    </div>
+                <?php elseif ($current_play_url): ?>
+                    <p class="error" style="margin-top: 12px;">
+                        Current track is not a supported YouTube URL for embedded playback.
                     </p>
                 <?php endif; ?>
 
@@ -356,14 +402,8 @@ $help_content = file_exists(__DIR__ . '/README.md')
                 <?php endif; ?>
 
                 <div class="play-actions">
-                    <form method="post" id="advancePlayForm" style="display:inline;">
-                        <input type="hidden" name="advance_play" value="1">
-                        <button
-                            type="button"
-                            id="playButton"
-                            data-next-url="<?= htmlspecialchars((string) ($next_play_url ?? ''), ENT_QUOTES) ?>"
-                            <?= $next_play_url && !$is_finished_playing ? '' : 'disabled style="opacity: 0.5; cursor: not-allowed;"' ?>
-                        >
+                    <form method="post" style="display:inline;">
+                        <button type="submit" id="playButton" name="advance_play" <?= $next_play_url && !$is_finished_playing ? '' : 'disabled style="opacity: 0.5; cursor: not-allowed;"' ?>>
                             <?= $current_play_index < 0 ? 'Play' : 'Play Next' ?>
                         </button>
                     </form>
@@ -382,10 +422,13 @@ $help_content = file_exists(__DIR__ . '/README.md')
 
     <img src="Picture_1.jpg" alt="Corner picture" class="corner-picture">
 
+    <script src="https://www.youtube.com/iframe_api"></script>
     <script>
         const dropdownMenus = document.querySelectorAll('.menu');
-        const playButton = document.getElementById('playButton');
-        const advancePlayForm = document.getElementById('advancePlayForm');
+        const currentVideoId = <?= json_encode($current_play_video_id, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        const playerStatusText = document.getElementById('playerStatusText');
+        let ytPlayer = null;
+        let ytInitialized = false;
 
         document.addEventListener('click', (event) => {
             dropdownMenus.forEach((menu) => {
@@ -395,27 +438,82 @@ $help_content = file_exists(__DIR__ . '/README.md')
             });
         });
 
-        if (playButton && advancePlayForm) {
-            playButton.addEventListener('click', () => {
-                const nextUrl = playButton.dataset.nextUrl || '';
+        function setPlayerStatus(message) {
+            if (playerStatusText) {
+                playerStatusText.textContent = message;
+            }
+        }
 
-                if (!nextUrl) {
+        function tryStartPlayback() {
+            if (!ytPlayer || typeof ytPlayer.playVideo !== 'function') {
+                return;
+            }
+
+            ytPlayer.playVideo();
+
+            // On mobile browsers autoplay with sound may be blocked.
+            window.setTimeout(() => {
+                if (!ytPlayer || typeof ytPlayer.getPlayerState !== 'function') {
                     return;
                 }
 
-                const popup = window.open(
-                    nextUrl,
-                    'music_player_' + Date.now(),
-                    'width=1000,height=700,menubar=yes,toolbar=yes,scrollbars=yes'
-                );
-
-                if (!popup) {
-                    window.alert('Please allow pop-ups for this site, then click Play again.');
-                    return;
+                if (ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+                    ytPlayer.mute();
+                    ytPlayer.playVideo();
+                    setPlayerStatus('Autoplay blocked with sound. Playing muted; unmute in player controls.');
                 }
+            }, 800);
+        }
 
-                advancePlayForm.submit();
+        function initializeYouTubePlayer() {
+            if (ytInitialized || !currentVideoId || !document.getElementById('ytPlayer')) {
+                return;
+            }
+
+            ytInitialized = true;
+
+            ytPlayer = new YT.Player('ytPlayer', {
+                width: '100%',
+                height: '315',
+                videoId: currentVideoId,
+                playerVars: {
+                    autoplay: 1,
+                    playsinline: 1,
+                    rel: 0,
+                    modestbranding: 1
+                },
+                events: {
+                    onReady: () => {
+                        setPlayerStatus('Player ready. Starting track...');
+                        tryStartPlayback();
+                    },
+                    onStateChange: (event) => {
+                        if (event.data === YT.PlayerState.PLAYING) {
+                            setPlayerStatus('Now playing.');
+                        } else if (event.data === YT.PlayerState.PAUSED) {
+                            setPlayerStatus('Paused.');
+                        } else if (event.data === YT.PlayerState.ENDED) {
+                            setPlayerStatus('Track ended. Click Play Next to continue.');
+                        }
+                    },
+                    onError: (event) => {
+                        const errorMap = {
+                            2: 'Invalid YouTube video ID.',
+                            5: 'HTML5 player error.',
+                            100: 'Video not found or removed.',
+                            101: 'Video cannot be played in embedded players.',
+                            150: 'Video cannot be played in embedded players.'
+                        };
+                        setPlayerStatus(errorMap[event.data] || 'Unable to play this video in embedded mode.');
+                    }
+                }
             });
+        }
+
+        window.onYouTubeIframeAPIReady = initializeYouTubePlayer;
+
+        if (window.YT && window.YT.Player) {
+            initializeYouTubePlayer();
         }
     </script>
 </body>
